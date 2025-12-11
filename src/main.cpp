@@ -1,68 +1,66 @@
-/*
- * Leitura de Sensor Industrial 4-20mA com ESP32
- * Range de Pressão: 0.5 bar a 3.0 bar
- * Hardware: Resistor Shunt de 150 Ohms entre o pino de leitura e GND.
- */
 #include <Arduino.h>
-const int PIN_SENSOR = 34; // Use pinos ADC1 (ex: 32, 33, 34, 35) se usar Wi-Fi
 
-// Configurações do Hardware
-const float R_SHUNT = 150.0; // Valor do resistor em Ohms
-const float V_REF = 3.3;     // Tensão de referência do ESP32 (pode calibrar medindo o pino 3V3)
-const int ADC_RES = 4095;    // Resolução do ADC (12 bits)
+/**
+ * PROJETO: Leitura de Sensor Industrial 4-20mA (Versão Estável)
+ * PLATAFORMA: ESP32 (PlatformIO)
+ * ALGORITMO: Filtro Média Móvel Exponencial (EMA)
+ */
 
-// Configurações do Sensor
-const float PRESSAO_MIN = 0.5; // Pressão em 4mA (Bar)
-const float PRESSAO_MAX = 3.0; // Pressão em 20mA (Bar)
+// --- Configurações de Hardware ---
+const int PIN_SENSOR = 34;   
+const float R_SHUNT = 150.0; // Ohms
+const float V_REF = 3.3;     
+const int ADC_RES = 4095;    
+
+// --- Configurações do Sensor ---
+const float PRESSAO_MIN = 0.5; // Bar
+const float PRESSAO_MAX = 3.0; // Bar
+
+// --- Configurações do Filtro (O Segredo) ---
+// Alpha define a suavidade (0.01 a 1.0).
+// 0.05 = Muito lento/suave (parece câmera lenta)
+// 0.10 = Equilíbrio ideal (Recomendado)
+// 0.50 = Rápido, mas com algum ruído
+const float ALPHA = 0.1; 
+
+float adc_filtrado = 0.0; // Guarda o histórico
 
 void setup() {
   Serial.begin(115200);
-  
-  // Configura a atenuação do ADC para ler até ~3.3V
-  analogSetAttenuation(ADC_11db); 
+  analogSetAttenuation(ADC_11db);
   pinMode(PIN_SENSOR, INPUT);
+
+  // Inicializa o filtro com a primeira leitura para não começar do zero
+  adc_filtrado = analogRead(PIN_SENSOR);
 }
 
 void loop() {
-  // 1. Ler o valor cru do ADC (0 a 4095)
-  // Fazemos uma média de 10 leituras para estabilizar o sinal
-  long soma = 0;
-  for(int i=0; i<10; i++){
-    soma += analogRead(PIN_SENSOR);
-    delay(5);
-  }
-  int adc_raw = soma / 10;
+  // 1. Leitura Raw (Crua)
+  int leitura_atual = analogRead(PIN_SENSOR);
 
-  // 2. Converter ADC para Tensão (Volts)
-  float tensao = (adc_raw * V_REF) / ADC_RES;
+  // 2. Aplicação do Filtro EMA
+  // Fórmula: NovoValor = (Alpha * Atual) + ((1 - Alpha) * Anterior)
+  adc_filtrado = (ALPHA * leitura_atual) + ((1.0 - ALPHA) * adc_filtrado);
 
-  // 3. Converter Tensão para Corrente (mA) usando Lei de Ohm (I = V / R)
-  // Multiplicamos por 1000 para ver em mA
+  // 3. Conversões (Usando o valor filtrado agora)
+  float tensao = (adc_filtrado * V_REF) / ADC_RES;
   float corrente_mA = (tensao / R_SHUNT) * 1000.0;
 
-  // 4. Calcular a Pressão (Bar)
-  // Mapeamento linear: Se corrente < 4mA, assume min; se > 20mA, assume max.
+  // 4. Cálculo da Pressão
   float pressao = 0.0;
 
-  if (corrente_mA < 4.0) {
-    pressao = PRESSAO_MIN; // Ou tratar como erro/sensor desconectado
-  } else if (corrente_mA > 20.0) {
-    pressao = PRESSAO_MAX;
+  if (corrente_mA < 3.5) {
+    pressao = 0.0; // Sensor desconectado/erro
+  } else if (corrente_mA > 21.0) {
+    pressao = PRESSAO_MAX; 
   } else {
-    // Fórmula de interpolação linear
-    pressao = PRESSAO_MIN + (corrente_mA - 4.0) * (PRESSAO_MAX - PRESSAO_MIN) / (20.0 - 4.0);
+    pressao = PRESSAO_MIN + (corrente_mA - 4.0) * (PRESSAO_MAX - PRESSAO_MIN) / (16.0);
   }
 
-  // Mostra os resultados no Serial Monitor
-  Serial.print("ADC: ");
-  Serial.print(adc_raw);
-  Serial.print(" | Tensão: ");
-  Serial.print(tensao);
-  Serial.print("V | Corrente: ");
-  Serial.print(corrente_mA);
-  Serial.print("mA | >> PRESSÃO: ");
-  Serial.print(pressao);
-  Serial.println(" bar");
+  // 5. Exibição
+  // Mostro o RAW vs Filtrado para você ver a diferença
+  Serial.printf("Raw: %d | Filtrado: %.1f | >> PRESSÃO: %.3f bar\n", 
+                leitura_atual, adc_filtrado, pressao);
 
-  delay(1000);
+  delay(100); // 10 leituras por segundo (mais rápido que antes)
 }
