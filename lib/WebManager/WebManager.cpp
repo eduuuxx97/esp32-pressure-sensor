@@ -15,14 +15,18 @@ void WebManager::setupRoutes() {
   server.on("/", [this](){ server.send(200, "text/html", index_html); });
 
   server.on("/dados", [this](){
-      String json = this->sensores->getJson();
-      json.remove(json.length() - 1);
+      char tempBuffer[256]; 
+      this->sensores->getJson(tempBuffer, sizeof(tempBuffer));
       
-      // Verificação direta do hardware para o LED da interface
+      String json = String(tempBuffer);
+      if (json.endsWith("}")) json.remove(json.length() - 1);
+      
       bool sdOk = (SD.cardType() != CARD_NONE); 
 
-      json += ", \"status\": \"" + this->experimento->getTempoRestante() + "\"";
+      // Sincroniza o cronômetro da Web com o tempo real do RTC
+      json += ", \"status\": \"" + this->experimento->getTempoRestante(this->relogio->getUnixAgora()) + "\"";
       json += ", \"rodando\": " + String(this->experimento->isRunning() ? "true" : "false");
+      json += ", \"pausado\": " + String(this->experimento->isPaused() ? "true" : "false");
       json += ", \"count\": " + String(this->experimento->getContador());
       json += ", \"sdStatus\": " + String(sdOk ? "true" : "false"); 
       json += "}";
@@ -40,11 +44,26 @@ void WebManager::setupRoutes() {
         server.arg("h").toInt(), server.arg("m").toInt(), server.arg("s").toInt()
       );
     }
-    this->experimento->start(tempo);
+    this->experimento->start(tempo, this->relogio->getUnixAgora());
     server.send(200, "text/plain", "OK");
   });
 
   server.on("/stop", [this](){ this->experimento->stop(); server.send(200, "text/plain", "OK"); });
-  server.on("/pause", [this](){ this->experimento->pause(); server.send(200, "text/plain", "OK"); });
-  server.on("/resume", [this](){ this->experimento->resume(); server.send(200, "text/plain", "OK"); });
+  
+  server.on("/pause", [this](){ 
+    this->experimento->pause(this->relogio->getUnixAgora()); 
+    server.send(200, "text/plain", "OK"); 
+  });
+
+  server.on("/resume", [this](){ 
+    this->experimento->resume(this->relogio->getUnixAgora()); 
+    server.send(200, "text/plain", "OK"); 
+  });
+
+  // NOVA ROTA: Reiniciar o ESP32 via Software (Segurança remota)
+  server.on("/restart", [this](){
+    server.send(200, "text/plain", "RESTARTING...");
+    delay(1000);
+    ESP.restart();
+  });
 }

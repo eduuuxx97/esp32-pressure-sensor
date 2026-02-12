@@ -1,64 +1,58 @@
 #include "ExperimentManager.h"
 
 ExperimentManager::ExperimentManager() {
-  this->emAndamento = false;
-  this->pausado = false;
-  this->duracaoTotal = 0;
-  this->intervaloLog = 2000;
-  this->contadorLeituras = 0;
-}
-
-void ExperimentManager::start(long minutos) {
-  this->emAndamento = true;
-  this->pausado = false;
-  this->inicio = millis();
-  this->contadorLeituras = 0; // Reseta ao iniciar novo teste
-  this->duracaoTotal = (minutos > 0) ? (unsigned long)minutos * 60 * 1000 : 0;
-}
-
-void ExperimentManager::stop() { this->emAndamento = false; this->pausado = false; }
-
-void ExperimentManager::pause() {
-  if (emAndamento && !pausado) {
-    this->pausado = true;
-    this->inicioPausa = millis();
-  }
-}
-
-void ExperimentManager::resume() {
-  if (emAndamento && pausado) {
+    this->emAndamento = false;
     this->pausado = false;
-    this->inicio += (millis() - inicioPausa);
-  }
+    this->unixFim = 0;
+    this->unixPausa = 0;
+    this->intervaloLog = 2000;
+    this->contadorLeituras = 0;
 }
 
-bool ExperimentManager::isRunning() {
-  if (!emAndamento || pausado) return false;
-  if (duracaoTotal > 0 && (millis() - inicio >= duracaoTotal)) {
-    stop();
-    return false;
-  }
-  return true;
+void ExperimentManager::start(long minutos, uint32_t unixAgora) {
+    this->unixFim = unixAgora + (minutos * 60);
+    this->emAndamento = true;
+    this->pausado = false;
+    this->contadorLeituras = 0;
 }
 
-bool ExperimentManager::isPaused() { return (emAndamento && pausado); }
+void ExperimentManager::stop() {
+    this->emAndamento = false;
+    this->pausado = false;
+}
 
-String ExperimentManager::getTempoRestante() {
-  if (!emAndamento) return "PARADO";
-  if (pausado) return "PAUSADO";
-  if (duracaoTotal == 0) return "LIVRE (REC)";
+void ExperimentManager::pause(uint32_t unixAgora) {
+    if (emAndamento && !pausado) {
+        pausado = true;
+        unixPausa = unixAgora;
+    }
+}
 
-  unsigned long decorrido = millis() - inicio;
-  if (decorrido > duracaoTotal) return "00:00:00";
-  
-  unsigned long falta = duracaoTotal - decorrido;
-  unsigned long segs = falta / 1000;
-  unsigned long d = segs / 86400; segs %= 86400;
-  unsigned long h = segs / 3600; segs %= 3600;
-  unsigned long m = segs / 60; segs %= 60;
-  
-  char buffer[30];
-  if(d > 0) sprintf(buffer, "%ldd %02ld:%02ld:%02ld", d, h, m, segs);
-  else sprintf(buffer, "%02ld:%02ld:%02ld", h, m, segs);
-  return String(buffer);
+void ExperimentManager::resume(uint32_t unixAgora) {
+    if (emAndamento && pausado) {
+        pausado = false;
+        // O tempo que ficou pausado é adicionado ao tempo de fim original
+        uint32_t tempoPausado = unixAgora - unixPausa;
+        this->unixFim += tempoPausado;
+    }
+}
+
+String ExperimentManager::getTempoRestante(uint32_t unixAgora) {
+    if (!emAndamento) return "00:00:00";
+    
+    uint32_t agoraReferencia = pausado ? unixPausa : unixAgora;
+
+    if (agoraReferencia >= unixFim) {
+        emAndamento = false;
+        return "00:00:00";
+    }
+
+    uint32_t restanteSeg = unixFim - agoraReferencia;
+    int h = restanteSeg / 3600;
+    int m = (restanteSeg % 3600) / 60;
+    int s = restanteSeg % 60;
+
+    char buffer[15];
+    sprintf(buffer, "%02d:%02d:%02d", h, m, s);
+    return String(buffer);
 }

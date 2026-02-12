@@ -2,25 +2,32 @@
 #include <Arduino.h>
 
 bool DataLogger::begin() {
-  // Inicialização do barramento SPI para o cartão SD
-  // Retorna true se o cartão for montado com sucesso
-  if (!SD.begin()) return false;
+  if (!SD.begin(5)) { // Usando o pino 5 que validamos
+    Serial.println("Erro critico: SD nao montado no pino 5");
+    return false;
+  }
   return true;
 }
 
 void DataLogger::log(String nomeArquivo, String dados) {
-  // MUDANÇA CRÍTICA: Use FILE_APPEND em vez de FILE_WRITE
-  File dataFile = SD.open(nomeArquivo, FILE_APPEND); 
+  // Tenta abrir em modo APPEND (adicionar ao final)
+  File dataFile = SD.open(nomeArquivo, FILE_APPEND);
   
-  if (dataFile) {
-    dataFile.println(dados); // Grava a linha e pula para a próxima
-    dataFile.flush();        // Garante que o dado saia do buffer para o chip
-    dataFile.close();        // Fecha o arquivo com segurança
-  } else {
-    Serial.println("Erro ao abrir arquivo para APPEND no SD!");
+  // WATCHDOG DE PERIFÉRICO: Se falhar (mau contato), tenta reiniciar o chip do SD
+  if (!dataFile) {
+    Serial.println("Watchdog SD: Falha de escrita. Reiniciando hardware...");
+    SD.end(); 
+    delay(100);
+    if (SD.begin(5)) {
+      dataFile = SD.open(nomeArquivo, FILE_APPEND);
+    }
   }
-}
 
-File DataLogger::openForRead(String nomeArquivo) {
-  return SD.open(nomeArquivo, FILE_READ);
+  if (dataFile) {
+    dataFile.println(dados); 
+    dataFile.flush(); // Força a escrita física no disco
+    dataFile.close();
+  } else {
+    Serial.println("Watchdog SD: Erro persistente de hardware.");
+  }
 }

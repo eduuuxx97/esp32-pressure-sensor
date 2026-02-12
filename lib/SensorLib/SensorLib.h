@@ -2,7 +2,7 @@
 #define SENSORLIB_H
 
 #include <Arduino.h>
-#include <Adafruit_ADS1X15.h> // Biblioteca Adafruit
+#include <Adafruit_ADS1X15.h> 
 #include "../../include/Config.h"
 
 class SensorLib {
@@ -17,7 +17,9 @@ class SensorLib {
     void begin(); 
     void update(); 
     float getPressure(int index); 
-    String getJson(); 
+    
+    // Atualizado: agora aceita o buffer e o tamanho, sem retornar String
+    void getJson(char* buffer, size_t n); 
 };
 
 #endif
