@@ -7,18 +7,18 @@
 
 class SensorLib {
   private:
-    Adafruit_ADS1115 ads1; // Módulo 1 (Endereço 0x48)
-    Adafruit_ADS1115 ads2; // Módulo 2 (Endereço 0x49)
-    
+    Adafruit_ADS1115 ads1; 
+    Adafruit_ADS1115 ads2; 
     float adc_filtrado[NUM_SENSORES];
     float pressoes_finais[NUM_SENSORES];
+    bool hw_status; // Status de saúde do I2C
 
   public:
     void begin(); 
     void update(); 
+    void recuperarI2C(); // Camada 2: Força a limpeza do barramento
     float getPressure(int index); 
-    
-    // Atualizado: agora aceita o buffer e o tamanho, sem retornar String
+    bool isHardwareOK() { return hw_status; }
     void getJson(char* buffer, size_t n); 
 };
 
