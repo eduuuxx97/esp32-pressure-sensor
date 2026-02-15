@@ -13,7 +13,7 @@ DataLogger logger;
 ExperimentManager experimento;
 WebManager web;
 
-char logBuffer[450];    
+char logBuffer[500]; // Buffer aumentado para a nova coluna    
 String nomeArquivoSDAtual = ""; 
 unsigned long ultimaAmostragem = 0;
 
@@ -33,7 +33,6 @@ void setup() {
       String conteudo = f.readStringUntil('\n');
       f.close();
       
-      // Formato: Arquivo;Contador;UnixFim;Pausado
       int p1 = conteudo.indexOf(';');
       int p2 = conteudo.indexOf(';', p1 + 1);
       int p3 = conteudo.lastIndexOf(';');
@@ -44,7 +43,6 @@ void setup() {
           uint32_t unixFim = (uint32_t)conteudo.substring(p2 + 1, p3).toInt();
           bool pausado = (conteudo.substring(p3 + 1).toInt() == 1);
 
-          // Só recupera se o tempo de fim ainda for futuro
           if (unixFim > timeManager.getUnixAgora()) {
               experimento.setContador(cont);
               experimento.setUnixFim(unixFim);
@@ -61,23 +59,22 @@ void setup() {
 
 void loop() {
   web.handle();      
-  sensores.update(); // Aqui reside a Camada 2 (Watchdog I2C)
+  sensores.update(); 
 
   if (experimento.isRunning()) {
     uint32_t agora = timeManager.getUnixAgora();
 
-    // Lógica de gravação: baseada no intervalo e estado de pausa
     if (!experimento.isPaused() && (millis() - ultimaAmostragem >= experimento.getIntervalo())) {
       ultimaAmostragem = millis();
 
-      // Se é a primeira gravação após o boot ou início
       if (nomeArquivoSDAtual == "") {
         nomeArquivoSDAtual = timeManager.getNomeArquivoFormatado();
-        logger.log(nomeArquivoSDAtual, "Data;Hora;S1;S2;S3;S4;S5;S6;Tempo_Exp;Modo");
+        // Adicionado "Luz" ao cabeçalho
+        logger.log(nomeArquivoSDAtual, "Data;Hora;S1;S2;S3;S4;S5;S6;Tempo_Exp;Modo;Luz");
       }
 
-      // Snprintf evita fragmentação de memória em longos períodos
-      snprintf(logBuffer, sizeof(logBuffer), "%s;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%s;%s",
+      // Adicionado "sim" ao final da linha de dados
+      snprintf(logBuffer, sizeof(logBuffer), "%s;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%s;%s;SIM",
                timeManager.getDataHoraCSV().c_str(), 
                sensores.getPressure(0), sensores.getPressure(1),
                sensores.getPressure(2), sensores.getPressure(3),
@@ -88,7 +85,6 @@ void loop() {
       logger.log(nomeArquivoSDAtual, String(logBuffer)); 
       experimento.incrementarContador();
 
-      // Atualiza Checkpoint no LittleFS para proteção contra desligamento
       File f = LittleFS.open("/status.txt", "w");
       if(f) {
         f.printf("%s;%lu;%u;%d", 
@@ -100,7 +96,6 @@ void loop() {
       }
     }
     
-    // Auto-finalização se o tempo acabar
     if (experimento.getTempoRestante(agora) == "00:00:00") {
         experimento.stop();
         if (LittleFS.exists("/status.txt")) LittleFS.remove("/status.txt");
@@ -108,7 +103,6 @@ void loop() {
     }
   } 
   else {
-    // Se não está rodando, garante que o arquivo de status não existe
     if (LittleFS.exists("/status.txt")) LittleFS.remove("/status.txt");
   }
 }
