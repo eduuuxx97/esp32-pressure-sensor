@@ -4,6 +4,7 @@
 
 void SensorLib::begin() {
   hw_status = true;
+  // Inicialização dos ADCs
   if (!ads1.begin(ADS1_ADDR)) { Serial.println("ERRO: ADS1 (0x48)"); hw_status = false; }
   if (!ads2.begin(ADS2_ADDR)) { Serial.println("ERRO: ADS2 (0x49)"); hw_status = false; }
   
@@ -13,6 +14,28 @@ void SensorLib::begin() {
   for(int i=0; i<NUM_SENSORES; i++) {
     adc_filtrado[i] = 0; pressoes_finais[i] = 0;
   }
+
+  // --- Inicialização do DS18B20 ---
+  sensorsDS.begin(); 
+  sensorsDS.setWaitForConversion(false); // Não trava o processador esperando a leitura
+  temperaturaAtual = 0.0;
+  ultimaRequisicaoTemp = 0;
+}
+
+void SensorLib::updateTemp() {
+  // Solicita uma leitura e só busca o resultado 2 segundos depois
+  // Isso evita o erro de "OFFLINE" que você teve, pois o Wi-Fi continua livre
+  if (millis() - ultimaRequisicaoTemp > 2000) {
+    float tempLeitura = sensorsDS.getTempCByIndex(0);
+    
+    // Validação básica: se o sensor for desconectado, ele retorna -127
+    if (tempLeitura > -50 && tempLeitura < 150) {
+      temperaturaAtual = tempLeitura;
+    }
+    
+    sensorsDS.requestTemperatures(); // Dispara o pedido para a próxima leitura
+    ultimaRequisicaoTemp = millis();
+  }
 }
 
 void SensorLib::recuperarI2C() {
@@ -21,7 +44,6 @@ void SensorLib::recuperarI2C() {
   pinMode(PIN_I2C_SCL, OUTPUT);
   pinMode(PIN_I2C_SDA, OUTPUT);
 
-  // 9 pulsos de clock para destravar escravos
   for (int i = 0; i < 9; i++) {
     digitalWrite(PIN_I2C_SCL, LOW); delayMicroseconds(5);
     digitalWrite(PIN_I2C_SCL, HIGH); delayMicroseconds(5);
@@ -31,7 +53,6 @@ void SensorLib::recuperarI2C() {
 }
 
 void SensorLib::update() {
-  // Testa se o hardware responde antes de ler
   Wire.beginTransmission(ADS1_ADDR);
   if (Wire.endTransmission() != 0) {
     hw_status = false;
@@ -54,9 +75,11 @@ void SensorLib::update() {
 }
 
 void SensorLib::getJson(char* buffer, size_t n) {
-  snprintf(buffer, n, "{\"s1\":%.2f,\"s2\":%.2f,\"s3\":%.2f,\"s4\":%.2f,\"s5\":%.2f,\"s6\":%.2f}",
+  // Adicionado a chave "temp" ao final do JSON
+  snprintf(buffer, n, "{\"s1\":%.2f,\"s2\":%.2f,\"s3\":%.2f,\"s4\":%.2f,\"s5\":%.2f,\"s6\":%.2f,\"temp\":%.2f}",
            pressoes_finais[0], pressoes_finais[1], pressoes_finais[2],
-           pressoes_finais[3], pressoes_finais[4], pressoes_finais[5]);
+           pressoes_finais[3], pressoes_finais[4], pressoes_finais[5],
+           temperaturaAtual);
 }
 
 float SensorLib::getPressure(int index) {

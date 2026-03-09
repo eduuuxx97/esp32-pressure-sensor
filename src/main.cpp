@@ -13,7 +13,7 @@ DataLogger logger;
 ExperimentManager experimento;
 WebManager web;
 
-char logBuffer[500]; // Buffer aumentado para a nova coluna    
+char logBuffer[500]; 
 String nomeArquivoSDAtual = ""; 
 unsigned long ultimaAmostragem = 0;
 
@@ -35,20 +35,24 @@ void setup() {
       
       int p1 = conteudo.indexOf(';');
       int p2 = conteudo.indexOf(';', p1 + 1);
-      int p3 = conteudo.lastIndexOf(';');
+      int p3 = conteudo.indexOf(';', p2 + 1); // Alterado para buscar o próximo ;
+      int p4 = conteudo.lastIndexOf(';');    // O último agora é o intervalo
 
-      if (p1 != -1 && p2 != -1 && p3 != -1) {
+      if (p1 != -1 && p2 != -1 && p3 != -1 && p4 != -1) {
           nomeArquivoSDAtual = conteudo.substring(0, p1);
           unsigned long cont = conteudo.substring(p1 + 1, p2).toInt();
           uint32_t unixFim = (uint32_t)conteudo.substring(p2 + 1, p3).toInt();
-          bool pausado = (conteudo.substring(p3 + 1).toInt() == 1);
+          bool pausado = (conteudo.substring(p3 + 1, p4).toInt() == 1);
+          unsigned long intervaloSeg = conteudo.substring(p4 + 1).toInt();
 
           if (unixFim > timeManager.getUnixAgora()) {
               experimento.setContador(cont);
               experimento.setUnixFim(unixFim);
               experimento.setPausado(pausado);
+              experimento.setIntervalo(intervaloSeg); // <--- RESTAURA O RITMO (10s ou 2s)
               experimento.setRunning(true);
-              Serial.println(">>> EXPERIMENTO RECUPERADO: " + nomeArquivoSDAtual);
+              Serial.println(">>> EXP RECUPERADO: " + nomeArquivoSDAtual);
+              Serial.printf(">>> INTERVALO RESTAURADO: %lu s\n", intervaloSeg);
           }
       }
     }
@@ -60,6 +64,7 @@ void setup() {
 void loop() {
   web.handle();      
   sensores.update(); 
+  sensores.updateTemp(); 
 
   if (experimento.isRunning()) {
     uint32_t agora = timeManager.getUnixAgora();
@@ -69,29 +74,31 @@ void loop() {
 
       if (nomeArquivoSDAtual == "") {
         nomeArquivoSDAtual = timeManager.getNomeArquivoFormatado();
-        // Adicionado "Luz" ao cabeçalho
-        logger.log(nomeArquivoSDAtual, "Data;Hora;S1;S2;S3;S4;S5;S6;Tempo_Exp;Modo;Luz");
+        logger.log(nomeArquivoSDAtual, "Data;Hora;S1;S2;S3;S4;S5;S6;Temp;Tempo_Exp;Modo;Luz");
       }
 
-      // Adicionado "sim" ao final da linha de dados
-      snprintf(logBuffer, sizeof(logBuffer), "%s;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%s;%s;SIM",
+      snprintf(logBuffer, sizeof(logBuffer), "%s;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;%s;%s;SIM",
                timeManager.getDataHoraCSV().c_str(), 
                sensores.getPressure(0), sensores.getPressure(1),
                sensores.getPressure(2), sensores.getPressure(3),
                sensores.getPressure(4), sensores.getPressure(5),
+               sensores.getTemp(),
                experimento.getTempoRestante(agora).c_str(),
                sensores.isHardwareOK() ? "AUTOMATICO" : "RECUPERACAO_I2C");
 
-      logger.log(nomeArquivoSDAtual, String(logBuffer)); 
+      logger.log(nomeArquivoSDAtual, String(logBuffer));
       experimento.incrementarContador();
 
+      // --- SALVAMENTO INCLUINDO INTERVALO ---
       File f = LittleFS.open("/status.txt", "w");
       if(f) {
-        f.printf("%s;%lu;%u;%d", 
+        // Formato salvo: NomeArquivo;Contador;UnixFim;Pausado;Intervalo
+        f.printf("%s;%lu;%u;%d;%lu", 
                  nomeArquivoSDAtual.c_str(), 
                  experimento.getContador(), 
                  experimento.getUnixFim(),
-                 experimento.isPaused() ? 1 : 0);
+                 experimento.isPaused() ? 1 : 0,
+                 experimento.getIntervalo() / 1000); 
         f.close();
       }
     }
@@ -99,10 +106,11 @@ void loop() {
     if (experimento.getTempoRestante(agora) == "00:00:00") {
         experimento.stop();
         if (LittleFS.exists("/status.txt")) LittleFS.remove("/status.txt");
-        nomeArquivoSDAtual = "";
+        nomeArquivoSDAtual = ""; 
     }
   } 
   else {
+    nomeArquivoSDAtual = ""; 
     if (LittleFS.exists("/status.txt")) LittleFS.remove("/status.txt");
   }
 }

@@ -1,4 +1,4 @@
-('C:\\Users\\eduar\\Documents\\esp32-pressure-sensor-fddf5a805efafed734a626c4eb85bd5234cb0e00\\App_PC\\build\\MonitorApp\\PYZ-00.pyz',
+('C:\\Users\\eduar\\Documents\\esp32-pressure-sensor-fddf5a805efafed734a626c4eb85bd5234cb0e00\\App_PC\\build\\Monitor_Pressaa-LSA\\PYZ-00.pyz',
  [('__future__',
    'C:\\Users\\eduar\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\__future__.py',
    'PYMODULE'),

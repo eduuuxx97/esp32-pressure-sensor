@@ -32,7 +32,9 @@ const char index_html[] PROGMEM = R"rawliteral(
     .grafico-container { position: relative; height: 250px; margin-top: 10px; }
     canvas { width: 100%; height: 100%; }
     
-    /* LEDs de Status */
+    /* Estilo da Caixa de Temperatura */
+    .temp-container { background: #38bfc4; color: white; padding: 10px; border-radius: 8px; margin-top: 5px; font-weight: bold; font-size: 1.2rem; }
+    
     .status-bar { display: flex; align-items: center; justify-content: center; gap: 20px; padding: 5px; margin-bottom: 10px; }
     .led-item { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; }
     .led { width: 12px; height: 12px; border-radius: 50%; background: gray; border: 1px solid #333; }
@@ -42,12 +44,15 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
 
-  <h2>Monitor Industrial V2</h2>
+  <h2>Monitor Industrial - LSA</h2>
 
   <div class="painel-box">
     <div class="status-bar">
       <div class="led-item"><div id="wifi-led" class="led"></div><span>CONEXÃO</span></div>
       <div class="led-item"><div id="sd-led" class="led"></div><span>CARTÃO SD</span></div>
+    </div>
+    <div class="temp-container">
+      🌡️ Temperatura: <span id="valTemp">--</span>°C
     </div>
   </div>
 
@@ -108,12 +113,19 @@ const char index_html[] PROGMEM = R"rawliteral(
       if(r.ok) { document.getElementById('wifi-led').className = 'led led-green'; return r.json(); }
       throw new Error();
     }).then(data => {
+        // Atualiza as pressões
         for(let i=0; i<6; i++){
           let val = parseFloat(data['s'+(i+1)]);
           document.getElementById('val'+i).innerText = val.toFixed(2);
           dadosGrafico[i].push(val);
           if(dadosGrafico[i].length > MAX_PONTOS) dadosGrafico[i].shift();
         }
+
+        // ATUALIZA A TEMPERATURA
+        if(data.temp !== undefined) {
+            document.getElementById('valTemp').innerText = data.temp.toFixed(1);
+        }
+
         document.getElementById('sd-led').className = data.sdStatus ? "led led-green" : "led led-red";
         
         let display = document.getElementById('display-tempo');
