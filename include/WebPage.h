@@ -29,12 +29,10 @@ const char index_html[] PROGMEM = R"rawliteral(
     .grid-sensores { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; }
     .card { background: #f9f9f9; padding: 5px; border-radius: 5px; border: 1px solid #ddd; }
     .valor { font-size: 1.2rem; font-weight: bold; color: #007BFF; }
-    .grafico-container { position: relative; height: 250px; margin-top: 10px; }
-    canvas { width: 100%; height: 100%; }
+    .grafico-container { position: relative; height: 320px; margin-top: 10px; padding-bottom: 10px; }
+    canvas { width: 100%; height: 100%; display: block; }
     
-    /* Estilo da Caixa de Temperatura */
     .temp-container { background: #38bfc4; color: white; padding: 10px; border-radius: 8px; margin-top: 5px; font-weight: bold; font-size: 1.2rem; }
-    
     .status-bar { display: flex; align-items: center; justify-content: center; gap: 20px; padding: 5px; margin-bottom: 10px; }
     .led-item { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; }
     .led { width: 12px; height: 12px; border-radius: 50%; background: gray; border: 1px solid #333; }
@@ -48,8 +46,8 @@ const char index_html[] PROGMEM = R"rawliteral(
 
   <div class="painel-box">
     <div class="status-bar">
-      <div class="led-item"><div id="wifi-led" class="led"></div><span>CONEXÃO</span></div>
-      <div class="led-item"><div id="sd-led" class="led"></div><span>CARTÃO SD</span></div>
+      <div id="wifi-led" class="led"></div><span>CONEXÃO</span>
+      <div id="sd-led" class="led"></div><span>CARTÃO SD</span>
     </div>
     <div class="temp-container">
       🌡️ Temperatura: <span id="valTemp">--</span>°C
@@ -59,7 +57,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="painel-box">
     <h3>⏱️ Controle de Experimento</h3>
     <div class="timer-display" id="display-tempo">PARADO</div>
-    <div class="input-group" id="inputs-tempo">
+    <div class="input-group">
       <div class="input-wrapper"><label>Dias</label><input type="number" id="dias" value="0"></div>
       <div class="input-wrapper"><label>Horas</label><input type="number" id="horas" value="0"></div>
       <div class="input-wrapper"><label>Mins</label><input type="number" id="mins" value="60"></div>
@@ -85,8 +83,15 @@ const char index_html[] PROGMEM = R"rawliteral(
   const CORES = ['#FF0000', '#0000FF', '#00CC00', '#FF9900', '#9900CC', '#00CCCC'];
   const MAX_PONTOS = 60;
   let dadosGrafico = [[], [], [], [], [], []];
+  let labelsTempo = [];
+  
   let canvas = document.getElementById('meuGrafico');
   let ctx = canvas.getContext('2d');
+  
+  const MARGEM_ESQ = 50;  
+  const MARGEM_BAIXO = 50; 
+  const MARGEM_TOP = 15;
+  const MARGEM_DIR = 20;
 
   const grid = document.getElementById('grid-sensores');
   for(let i=0; i<6; i++){
@@ -113,7 +118,15 @@ const char index_html[] PROGMEM = R"rawliteral(
       if(r.ok) { document.getElementById('wifi-led').className = 'led led-green'; return r.json(); }
       throw new Error();
     }).then(data => {
-        // Atualiza as pressões
+        // Captura Hora Atual
+        let agora = new Date();
+        let horaFormatada = agora.getHours().toString().padStart(2, '0') + ":" + 
+                            agora.getMinutes().toString().padStart(2, '0') + ":" + 
+                            agora.getSeconds().toString().padStart(2, '0');
+
+        labelsTempo.push(horaFormatada);
+        if(labelsTempo.length > MAX_PONTOS) labelsTempo.shift();
+
         for(let i=0; i<6; i++){
           let val = parseFloat(data['s'+(i+1)]);
           document.getElementById('val'+i).innerText = val.toFixed(2);
@@ -121,7 +134,6 @@ const char index_html[] PROGMEM = R"rawliteral(
           if(dadosGrafico[i].length > MAX_PONTOS) dadosGrafico[i].shift();
         }
 
-        // ATUALIZA A TEMPERATURA
         if(data.temp !== undefined) {
             document.getElementById('valTemp').innerText = data.temp.toFixed(1);
         }
@@ -150,24 +162,76 @@ const char index_html[] PROGMEM = R"rawliteral(
     }).catch(() => { document.getElementById('wifi-led').className = 'led led-red'; });
   }, 1000);
 
-  function resizeCanvas() { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; }
+  function resizeCanvas() { 
+    canvas.width = canvas.parentElement.clientWidth; 
+    canvas.height = canvas.parentElement.clientHeight; 
+    desenharGrafico();
+  }
   window.addEventListener('resize', resizeCanvas); resizeCanvas();
-  function map(v, i_min, i_max, o_min, o_max) { return (v - i_min) * (o_max - o_min) / (i_max - i_min) + o_min; }
+
+  function map(v, i_min, i_max, o_min, o_max) { 
+    return (v - i_min) * (o_max - o_min) / (i_max - i_min) + o_min; 
+  }
 
   function desenharGrafico() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#eee';
-    for(let p=0; p<=3.0; p+=0.5){
-      let y = map(p, 0, 3.5, canvas.height, 0);
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+    const larguraUtil = canvas.width - MARGEM_ESQ - MARGEM_DIR;
+    const alturaUtil = canvas.height - MARGEM_BAIXO - MARGEM_TOP;
+
+    // --- EIXOS ---
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(MARGEM_ESQ, MARGEM_TOP);
+    ctx.lineTo(MARGEM_ESQ, canvas.height - MARGEM_BAIXO);
+    ctx.lineTo(canvas.width - MARGEM_DIR, canvas.height - MARGEM_BAIXO);
+    ctx.stroke();
+
+    // --- ESCALA Y (PRESSÃO) ---
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = '10px Arial';
+    for(let p=0; p<=3.5; p+=0.5){
+      let y = map(p, 0, 3.5, canvas.height - MARGEM_BAIXO, MARGEM_TOP);
+      ctx.strokeStyle = '#eee';
+      ctx.beginPath(); ctx.moveTo(MARGEM_ESQ, y); ctx.lineTo(canvas.width - MARGEM_DIR, y); ctx.stroke();
+      ctx.fillStyle = '#333';
+      ctx.fillText(p.toFixed(1), MARGEM_ESQ - 8, y);
     }
+
+    // --- ESCALA X (HORÁRIO REAL) ---
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#666';
+    for(let i=0; i < labelsTempo.length; i++){
+      // Mostra a hora a cada 15 pontos para não embolar
+      if (i % 15 === 0 || i === labelsTempo.length - 1) { 
+        let x = map(i, 0, MAX_PONTOS - 1, MARGEM_ESQ, canvas.width - MARGEM_DIR);
+        ctx.fillText(labelsTempo[i], x, canvas.height - MARGEM_BAIXO + 8);
+        ctx.strokeStyle = '#999';
+        ctx.beginPath(); ctx.moveTo(x, canvas.height - MARGEM_BAIXO); ctx.lineTo(x, canvas.height - MARGEM_BAIXO + 5); ctx.stroke();
+      }
+    }
+
+    // --- TÍTULOS ---
+    ctx.fillStyle = '#333';
+    ctx.save();
+    ctx.translate(12, (alturaUtil/2) + MARGEM_TOP);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText("Pressão (bar)", 0, 0);
+    ctx.restore();
+    ctx.fillText("Tempo (Hora Real)", (larguraUtil/2) + MARGEM_ESQ, canvas.height - 15);
+
+    // --- LINHAS SENSORES ---
     for(let s=0; s<6; s++){
       if(dadosGrafico[s].length < 2) continue;
-      ctx.beginPath(); ctx.strokeStyle = CORES[s]; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.strokeStyle = CORES[s];
+      ctx.lineWidth = 2;
       for(let i=0; i<dadosGrafico[s].length; i++){
-        let x = map(i, 0, MAX_PONTOS-1, 0, canvas.width);
-        let y = map(dadosGrafico[s][i], 0, 3.5, canvas.height, 0);
-        if(i==0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        let x = map(i, 0, MAX_PONTOS - 1, MARGEM_ESQ, canvas.width - MARGEM_DIR);
+        let y = map(dadosGrafico[s][i], 0, 3.5, canvas.height - MARGEM_BAIXO, MARGEM_TOP);
+        if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
