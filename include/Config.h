@@ -22,6 +22,7 @@ static const float R_SHUNT = 150.0;
 static const float PRESSAO_MIN = 0.5;
 static const float PRESSAO_MAX = 3.0;
 static const float ALPHA = 0.1; // Filtro suave
+static const float PRESSAO_ATMOSFERICA = 1.01;
 
 // --- Hardware SD Card ---
 #define PIN_CS_SD 5
